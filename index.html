@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<title>JoyzMusic</title>
+<meta name="description" content="JoyzMusic - pemutar musik bergaya Metrolist & YouTube Music">
+<meta name="theme-color" content="#0d0e12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JoyzMusic">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%23fff'/%3E%3Cpath d='M70 36V78a16 16 0 0 1-32 0' fill='none' stroke='%23000' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M20 70A44 44 0 0 1 108 70' fill='none' stroke='%23000' stroke-width='8' stroke-linecap='round'/%3E%3Crect x='12' y='66' width='14' height='26' rx='5'/%3E%3Crect x='102' y='66' width='14' height='26' rx='5'/%3E%3C/svg%3E">
+
+<!--
+=====================================================================
+ PANDUAN PWA -> APK (PWABuilder)
+ Upload 4 file ini ke root repo GitHub Pages:
+   1. index.html   (file ini, boleh di-rename dari joyzmusic.html)
+   2. manifest.json (isi di bawah)
+   3. sw.js         (isi di bawah)
+   4. icon-192.png & icon-512.png (logo JoyzMusic, PNG asli)
+
+ ---------- manifest.json ----------
+ {
+   "name": "JoyzMusic",
+   "short_name": "JoyzMusic",
+   "description": "Pemutar musik bergaya Metrolist & YouTube Music",
+   "start_url": "./index.html",
+   "scope": "./",
+   "display": "standalone",
+   "orientation": "portrait",
+   "background_color": "#0d0e12",
+   "theme_color": "#0d0e12",
+   "lang": "id",
+   "categories": ["music", "entertainment"],
+   "icons": [
+     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+   ]
+ }
+ Lalu tambahkan di <head>:  <link rel="manifest" href="manifest.json">
+
+ ---------- sw.js ----------
+ const C = 'joyzmusic-v1';
+ const A = ['./', './index.html', './manifest.json'];
+ self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(A))); self.skipWaiting(); });
+ self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== C).map(x => caches.delete(x))))); self.clients.claim(); });
+ self.addEventListener('fetch', e => {
+   if (e.request.method !== 'GET') return;
+   e.respondWith(fetch(e.request).then(r => { if (new URL(e.request.url).origin === location.origin) { const cp = r.clone(); caches.open(C).then(c => c.put(e.request, cp)); } return r; }).catch(() => caches.match(e.request)));
+ });
+=====================================================================
+-->
+
+<style>
+:root{
+  --bg:#0d0e12; --bg2:#15161c; --surface:rgba(255,255,255,.07); --surface2:rgba(255,255,255,.12);
+  --text:#f2f2f7; --muted:#9a9cab; --accent:#9b9dff; --accent2:#6c63ff; --danger:#ff5d73;
+  --blur:20px; --glass:rgba(24,25,33,.62); --border:rgba(255,255,255,.09);
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+body.theme-transparent{--glass:rgba(24,25,33,.28); --blur:6px; --surface:rgba(255,255,255,.05)}
+body.theme-dark{--glass:#17181f; --blur:0px; --surface:#1b1c24; --surface2:#242530}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select{font:inherit;color:var(--text)}
+svg{display:block}
+.ic{width:24px;height:24px;fill:currentColor}
+.glass{background:var(--glass);-webkit-backdrop-filter:blur(var(--blur)) saturate(160%);backdrop-filter:blur(var(--blur)) saturate(160%);border:1px solid var(--border)}
+.hidden{display:none!important}
+
+/* Splash */
+#splash{position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .45s,visibility .45s}
+#splash.out{opacity:0;visibility:hidden}
+#splash .logo{width:112px;height:112px;animation:pop 1.1s cubic-bezier(.2,1.4,.4,1) both}
+#splash .name{font-size:26px;font-weight:800;letter-spacing:.5px;color:#fff;animation:fade 1s .35s both}
+#splash .name span{color:#000;background:#fff;padding:0 8px;border-radius:8px;margin-left:2px}
+#splash .bar{width:120px;height:3px;background:#222;border-radius:3px;overflow:hidden}
+#splash .bar i{display:block;height:100%;background:#fff;animation:load 1.5s linear forwards}
+@keyframes pop{0%{transform:scale(.4) rotate(-12deg);opacity:0}100%{transform:none;opacity:1}}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes load{from{width:0}to{width:100%}}
+
+/* Auth */
+#auth{position:fixed;inset:0;z-index:900;background:radial-gradient(120% 80% at 50% 0%,#232452 0%,var(--bg) 60%);display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto}
+.auth-card{width:100%;max-width:380px;border-radius:28px;padding:28px 22px;text-align:center}
+.auth-card .logo{width:72px;height:72px;margin:0 auto 10px}
+.auth-card h1{font-size:24px;margin-bottom:4px}
+.auth-card p{color:var(--muted);font-size:14px;margin-bottom:18px}
+.field{width:100%;padding:14px 16px;border-radius:14px;background:var(--surface);border:1px solid var(--border);outline:none;margin-bottom:10px;font-size:15px}
+.field:focus{border-color:var(--accent)}
+.btn{width:100%;padding:14px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0b0b14;font-weight:700;font-size:15px;margin-top:4px}
+.btn.ghost{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+.btn.sm{width:auto;padding:9px 16px;font-size:13px;border-radius:12px}
+.link{color:var(--accent);font-size:14px;margin-top:14px;display:inline-block}
+.err{color:var(--danger);font-size:13px;min-height:18px;margin-bottom:6px}
+
+/* App shell */
+#app{position:fixed;inset:0;display:flex;flex-direction:column}
+.view{position:absolute;inset:0;overflow-y:auto;padding:calc(var(--safe-t) + 14px) 16px calc(190px + var(--safe-b));display:none;scrollbar-width:none}
+.view::-webkit-scrollbar{display:none}
+.view.active{display:block}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.topbar h1{font-size:30px;font-weight:800;letter-spacing:-.5px}
+.avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0b0b14;font-weight:800;display:flex;align-items:center;justify-content:center;position:relative}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 14px;scrollbar-width:none;margin:0 -16px;padding-left:16px;padding-right:16px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:8px 16px;border-radius:12px;background:var(--surface);border:1px solid var(--border);font-size:14px;font-weight:500;transition:.2s}
+.chip.on{background:var(--accent);color:#0b0b14;border-color:var(--accent);font-weight:700}
+.sec{margin:20px 0 10px}
+.sec h2{font-size:21px;font-weight:800;letter-spacing:-.3px}
+.sec small{color:var(--muted);font-size:12px;display:block;margin-bottom:2px;text-transform:uppercase;letter-spacing:.8px}
+
+/* covers */
+.cv{position:relative;overflow:hidden;background:#222;border-radius:12px;aspect-ratio:1/1;width:100%}
+.cv .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:28px;color:rgba(255,255,255,.85)}
+.cv img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.34)}
+.round .cv,.cv.round{border-radius:50%}
+
+/* quick picks 3x3 */
+.qgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.qcard{min-width:0;text-align:left;display:block}
+.qcard .t{font-size:13px;font-weight:600;margin-top:7px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.qcard .a{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qcard:active .cv{transform:scale(.96)}
+.cv{transition:transform .15s}
+.hrow{display:flex;gap:14px;overflow-x:auto;margin:0 -16px;padding:0 16px 4px;scrollbar-width:none}
+.hrow::-webkit-scrollbar{display:none}
+.hrow .qcard{flex:none;width:132px}
+.hrow .artist{flex:none;width:104px;text-align:center}
+.hrow .artist .t{text-align:center;-webkit-line-clamp:1}
+
+/* rows */
+.row{display:flex;align-items:center;gap:12px;padding:8px 6px;border-radius:14px;width:100%;text-align:left}
+.row:active{background:var(--surface)}
+.row .cv{width:52px;height:52px;flex:none;border-radius:10px}
+.row .cv .ph{font-size:18px}
+.row .meta{flex:1;min-width:0}
+.row .t{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .a{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .rb{padding:8px;color:var(--muted)}
+.row.playing .t{color:var(--accent)}
+.eq{display:inline-flex;gap:2px;align-items:flex-end;height:12px;margin-right:6px}
+.eq i{width:3px;background:var(--accent);animation:eq .8s infinite ease-in-out}
+.eq i:nth-child(2){animation-delay:.2s}.eq i:nth-child(3){animation-delay:.4s}
+@keyframes eq{0%,100%{height:3px}50%{height:12px}}
+
+/* search */
+.searchbox{display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border);margin-bottom:12px}
+.searchbox input{flex:1;background:none;border:0;outline:none;padding:14px 0;font-size:16px}
+.empty{color:var(--muted);text-align:center;padding:36px 12px;font-size:14px}
+
+/* library tabs */
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs .chip{flex:1;text-align:center}
+
+/* settings */
+.card{border-radius:20px;padding:14px;margin-bottom:14px}
+.usercard{display:flex;align-items:center;gap:14px}
+.usercard .avatar{width:54px;height:54px;font-size:22px}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;background:linear-gradient(135deg,#ffd76a,#ff9f45);color:#2a1a00;margin-left:6px;vertical-align:middle}
+.setrow{display:flex;align-items:center;justify-content:space-between;padding:13px 4px;border-bottom:1px solid var(--border);width:100%;text-align:left}
+.setrow:last-child{border-bottom:0}
+.setrow .l{display:flex;align-items:center;gap:12px;font-size:15px}
+.setrow small{color:var(--muted)}
+.themes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.theme-opt{padding:12px 6px;border-radius:14px;text-align:center;font-size:13px;border:2px solid var(--border);background:var(--surface)}
+.theme-opt.on{border-color:var(--accent);color:var(--accent);font-weight:700}
+.theme-opt i{display:block;height:34px;border-radius:9px;margin-bottom:7px}
+.h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:18px 4px 8px;font-weight:700}
+
+/* mini player + nav */
+#mini{position:fixed;left:10px;right:10px;bottom:calc(68px + var(--safe-b));z-index:60;border-radius:20px;padding:8px 10px;display:flex;align-items:center;gap:10px;overflow:hidden;transition:transform .3s}
+#mini.off{transform:translateY(150%)}
+#mini .cv{width:46px;height:46px;flex:none;border-radius:10px}
+#mini .cv .ph{font-size:16px}
+#mini .meta{flex:1;min-width:0;text-align:left}
+#mini .t{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#mini .a{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#mini .ctl{display:flex;align-items:center;gap:2px}
+#mini .ctl button{padding:8px;border-radius:50%}
+#mini .pp{background:var(--text);color:#111;padding:9px!important}
+#mini .prog{position:absolute;left:0;bottom:0;height:2.5px;background:var(--accent);width:0;transition:width .4s linear}
+#nav{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;padding:8px 14px calc(8px + var(--safe-b));border-radius:22px 22px 0 0;border-bottom:0}
+#nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:var(--muted);font-size:11px;font-weight:600;transition:.2s}
+#nav button .pill{padding:4px 18px;border-radius:14px;transition:.2s}
+#nav button.on{color:var(--text)}
+#nav button.on .pill{background:rgba(155,157,255,.28);color:var(--accent)}
+.liked{color:var(--danger)!important}
+
+/* full player */
+#full{position:fixed;inset:0;z-index:200;background:var(--bg);transform:translateY(100%);transition:transform .38s cubic-bezier(.3,.9,.3,1);display:flex;flex-direction:column;padding:calc(var(--safe-t) + 10px) 22px calc(20px + var(--safe-b));overflow:hidden}
+#full.open{transform:none}
+#full .bgblur{position:absolute;inset:-40px;background-size:cover;background-position:center;filter:blur(60px) saturate(1.5);opacity:.45;z-index:-1;transition:background-image .4s}
+#full .fh{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:13px;font-weight:700;letter-spacing:.5px}
+#full .fh button{padding:8px}
+#full .art{width:100%;max-width:340px;margin:20px auto 18px;border-radius:22px;box-shadow:0 24px 60px rgba(0,0,0,.55);flex:none}
+#full .art .cv{border-radius:22px;aspect-ratio:1/1}
+#full .art .cv .ph{font-size:80px}
+#full .info{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#full .info .tt{min-width:0}
+#full .info h2{font-size:22px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#full .info p{color:var(--muted);font-size:15px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#full .info button{padding:10px}
+.seek{margin-top:16px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:5px;background:linear-gradient(to right,var(--accent) var(--p,0%),rgba(255,255,255,.18) var(--p,0%));outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#fff}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border:0;border-radius:50%;background:#fff}
+.times{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px}
+.ctrls{display:flex;align-items:center;justify-content:space-between;margin:14px 6px 8px}
+.ctrls button{padding:10px;border-radius:50%;color:var(--text)}
+.ctrls .big{background:var(--text);color:#111;padding:20px}
+.ctrls .big .ic{width:32px;height:32px}
+.ctrls .on{color:var(--accent)}
+.lyrbtn{margin:auto auto 0;display:flex;align-items:center;gap:8px;padding:10px 22px;border-radius:30px;background:var(--surface);border:1px solid var(--border);font-weight:700;font-size:14px}
+#lyrics{position:absolute;left:0;right:0;bottom:0;top:22%;z-index:5;border-radius:28px 28px 0 0;padding:18px 22px calc(24px + var(--safe-b));transform:translateY(105%);transition:transform .35s cubic-bezier(.3,.9,.3,1);display:flex;flex-direction:column}
+#lyrics.open{transform:none}
+#lyrics .lh{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-weight:800;font-size:18px}
+#lyrics pre{flex:1;overflow-y:auto;white-space:pre-wrap;font-family:inherit;font-size:19px;line-height:1.65;font-weight:600;color:#e8e8f4}
+
+/* modal & toast */
+.modal{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.55);display:none;align-items:flex-end;justify-content:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.modal.open{display:flex}
+.sheet{width:100%;max-width:520px;max-height:88dvh;overflow-y:auto;border-radius:26px 26px 0 0;padding:20px 18px calc(24px + var(--safe-b));animation:up .3s ease}
+@keyframes up{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+.sheet h3{font-size:20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.stat{background:var(--surface);border-radius:14px;padding:12px;text-align:center}
+.stat b{font-size:22px;display:block}.stat span{font-size:12px;color:var(--muted)}
+.mini-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border);font-size:14px}
+.mini-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini-row button{color:var(--danger);padding:6px}
+#toast{position:fixed;left:50%;top:calc(var(--safe-t) + 16px);transform:translate(-50%,-140%);z-index:9000;padding:11px 18px;border-radius:30px;font-size:14px;font-weight:600;transition:transform .35s;max-width:88vw;text-align:center}
+#toast.show{transform:translate(-50%,0)}
+#yt-holder{position:fixed;left:-9999px;top:0;width:200px;height:200px;opacity:0;pointer-events:none}
+</style>
+</head>
+<body class="theme-ios">
+
+<!-- ============ SPLASH ============ -->
+<div id="splash">
+  <svg class="logo" viewBox="0 0 128 128" aria-label="Logo JoyzMusic">
+    <rect width="128" height="128" rx="30" fill="#fff"/>
+    <path d="M70 38V78a16 16 0 0 1-32 0" fill="none" stroke="#000" stroke-width="12" stroke-linecap="round"/>
+    <path d="M20 70A44 44 0 0 1 108 70" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/>
+    <rect x="11" y="64" width="16" height="30" rx="6" fill="#000"/>
+    <rect x="101" y="64" width="16" height="30" rx="6" fill="#000"/>
+  </svg>
+  <div class="name">Joyz<span>Music</span></div>
+  <div class="bar"><i></i></div>
+</div>
+
+<!-- ============ AUTH ============ -->
+<div id="auth" class="hidden">
+  <div class="auth-card glass">
+    <svg class="logo" viewBox="0 0 128 128"><rect width="128" height="128" rx="30" fill="#fff"/><path d="M70 38V78a16 16 0 0 1-32 0" fill="none" stroke="#000" stroke-width="12" stroke-linecap="round"/><path d="M20 70A44 44 0 0 1 108 70" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/><rect x="11" y="64" width="16" height="30" rx="6"/><rect x="101" y="64" width="16" height="30" rx="6"/></svg>
+    <h1 id="authTitle">Masuk</h1>
+    <p id="authSub">Selamat datang kembali di JoyzMusic</p>
+    <input class="field" id="aName" placeholder="Nama tampilan" autocomplete="name" style="display:none">
+    <input class="field" id="aEmail" type="email" placeholder="Email" autocomplete="email">
+    <input class="field" id="aPass" type="password" placeholder="Kata sandi" autocomplete="current-password">
+    <div class="err" id="aErr"></div>
+    <button class="btn" id="aGo">Masuk</button>
+    <button class="btn ghost" id="aGuest" style="margin-top:8px">Lanjut sebagai tamu</button>
+    <a class="link" id="aSwitch">Belum punya akun? Daftar</a>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+
+  <!-- BERANDA -->
+  <section class="view active" id="v-home">
+    <div class="topbar"><h1>Beranda</h1><button class="avatar" id="homeAvatar" data-go="settings">J</button></div>
+    <div class="chips" id="chips"></div>
+    <div id="moodSec"></div>
+    <div class="sec"><small>Mulai radio dari lagu</small><h2>Panggilan Cepat</h2></div>
+    <div class="qgrid" id="quick"></div>
+    <div class="sec"><small>Favorit pendengar</small><h2>Artis Populer</h2></div>
+    <div class="hrow" id="artists"></div>
+    <div class="sec"><small>Pilihan untukmu</small><h2>Dengarkan Lagi</h2></div>
+    <div class="hrow" id="rec"></div>
+    <div class="sec"><small>Sedang naik daun</small><h2>Tangga Lagu</h2></div>
+    <div id="chart"></div>
+  </section>
+
+  <!-- CARI -->
+  <section class="view" id="v-search">
+    <div class="topbar"><h1>Cari</h1></div>
+    <div class="searchbox"><svg class="ic" viewBox="0 0 24 24" style="color:var(--muted)"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg><input id="q" placeholder="Lagu, artis, atau tempel link YouTube" autocomplete="off"></div>
+    <div id="sres"></div>
+  </section>
+
+  <!-- PUSTAKA -->
+  <section class="view" id="v-library">
+    <div class="topbar"><h1>Pustaka</h1></div>
+    <div class="tabs" id="libTabs">
+      <button class="chip on" data-t="liked">Disukai</button>
+      <button class="chip" data-t="hist">Riwayat</button>
+      <button class="chip" data-t="custom">Tambahan</button>
+    </div>
+    <div id="libList"></div>
+  </section>
+
+  <!-- PENGATURAN -->
+  <section class="view" id="v-settings">
+    <div class="topbar"><h1>Pengaturan</h1></div>
+    <div class="card glass usercard">
+      <div class="avatar" id="setAvatar">J</div>
+      <div style="min-width:0"><div style="font-weight:800;font-size:18px"><span id="setName">Tamu</span><span class="badge hidden" id="adminBadge">★ ADMIN</span></div><div id="setEmail" style="color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis">—</div></div>
+    </div>
+    <div class="card glass hidden" id="adminCard">
+      <button class="setrow" id="openAdmin"><span class="l">🛡️ Admin Panel<small>Kelola lagu & pengguna</small></span><span>›</span></button>
+    </div>
+    <div class="h2">Tema Tampilan</div>
+    <div class="card glass">
+      <div class="themes" id="themes">
+        <button class="theme-opt" data-th="ios"><i style="background:linear-gradient(135deg,rgba(155,157,255,.55),rgba(255,255,255,.12))"></i>iOS Blur</button>
+        <button class="theme-opt" data-th="transparent"><i style="background:linear-gradient(135deg,rgba(155,157,255,.2),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.2)"></i>Transparent</button>
+        <button class="theme-opt" data-th="dark"><i style="background:#1b1c24;border:1px solid #333"></i>Dark</button>
+      </div>
+    </div>
+    <div class="h2">Lainnya</div>
+    <div class="card glass">
+      <button class="setrow" id="clearHist"><span class="l">🕘 Hapus riwayat putar</span></button>
+      <button class="setrow" id="logout"><span class="l" style="color:var(--danger)">⎋ Keluar</span></button>
+    </div>
+    <p style="text-align:center;color:var(--muted);font-size:12px;margin-top:20px">JoyzMusic v1.0 • Audio via YouTube IFrame API</p>
+  </section>
+
+  <!-- MINI PLAYER -->
+  <div id="mini" class="glass off">
+    <div class="cv" id="miniCv"></div>
+    <div class="meta" id="miniMeta"><div class="t" id="miniT">—</div><div class="a" id="miniA">—</div></div>
+    <div class="ctl">
+      <button id="miniLike" aria-label="Suka"></button>
+      <button id="miniPP" class="pp" aria-label="Putar/Jeda"></button>
+      <button id="miniFull" aria-label="Layar penuh"></button>
+    </div>
+    <div class="prog" id="miniProg"></div>
+  </div>
+
+  <!-- NAV -->
+  <nav id="nav" class="glass">
+    <button data-go="home" class="on"><span class="pill" id="n-home"></span>Beranda</button>
+    <button data-go="search"><span class="pill" id="n-search"></span>Cari</button>
+    <button data-go="library"><span class="pill" id="n-library"></span>Pustaka</button>
+    <button data-go="settings"><span class="pill" id="n-settings"></span>Pengaturan</button>
+  </nav>
+</div>
+
+<!-- ============ FULL PLAYER ============ -->
+<div id="full">
+  <div class="bgblur" id="fBg"></div>
+  <div class="fh"><button id="fClose" aria-label="Tutup"></button><span>SEDANG DIPUTAR</span><button id="fQueue" aria-label="Antrean"></button></div>
+  <div class="art"><div class="cv" id="fCv"></div></div>
+  <div class="info">
+    <div class="tt"><h2 id="fT">—</h2><p id="fA">—</p></div>
+    <button id="fLike" aria-label="Suka"></button>
+  </div>
+  <div class="seek">
+    <input type="range" id="seek" min="0" max="1000" value="0">
+    <div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div>
+  </div>
+  <div class="ctrls">
+    <button id="bShuf" aria-label="Acak"></button>
+    <button id="bPrev" aria-label="Sebelumnya"></button>
+    <button id="bPP" class="big" aria-label="Putar/Jeda"></button>
+    <button id="bNext" aria-label="Berikutnya"></button>
+    <button id="bRep" aria-label="Ulang"></button>
+  </div>
+  <button class="lyrbtn" id="lyrBtn"></button>
+  <div id="lyrics" class="glass">
+    <div class="lh"><span>Lirik</span><button id="lyrClose" style="padding:6px"></button></div>
+    <pre id="lyrText">Memuat lirik…</pre>
+  </div>
+</div>
+
+<!-- ============ ADMIN MODAL ============ -->
+<div class="modal" id="adminModal">
+  <div class="sheet glass">
+    <h3>Admin Panel <button id="adminClose" style="padding:4px"></button></h3>
+    <div class="stats"><div class="stat"><b id="stU">0</b><span>Pengguna</span></div><div class="stat"><b id="stC">0</b><span>Lagu tambahan</span></div><div class="stat"><b id="stS">0</b><span>Total lagu</span></div></div>
+    <div class="h2" style="margin-top:6px">Tambah lagu</div>
+    <input class="field" id="adT" placeholder="Judul lagu">
+    <input class="field" id="adA" placeholder="Artis">
+    <input class="field" id="adV" placeholder="Video ID / link YouTube">
+    <select class="field" id="adM" style="background:var(--surface)"><option value="">Mood (opsional)</option><option>bersantai</option><option>tidur</option><option>senang</option><option>sedih</option><option>romansa</option></select>
+    <button class="btn" id="adAdd">Tambahkan</button>
+    <div class="h2">Lagu tambahan</div><div id="adSongs"></div>
+    <div class="h2">Pengguna terdaftar</div><div id="adUsers"></div>
+  </div>
+</div>
+
+<div id="toast" class="glass"></div>
+<div id="yt-holder"><div id="ytp"></div></div>
+
+<script>
+/* ================= HELPERS ================= */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const LS={g:(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch{return d}},s:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,40);
+const fmt=t=>{t=Math.max(0,Math.floor(t||0));return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')};
+let toastT;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2400)}
+
+const P={
+ play:'M8 5v14l11-7z', pause:'M6 19h4V5H6v14zm8-14v14h4V5h-4z',
+ next:'M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z', prev:'M6 6h2v12H6zm3.5 6l8.5 6V6z',
+ heart:'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z',
+ heartf:'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
+ home:'M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z', search:'M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z',
+ lib:'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-3 5h-3v4.5a2.5 2.5 0 1 1-2-2.45V5h5v2z',
+ set:'M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.12.22.37.29.6.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.26.42.5.42h3.84c.24 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.01-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z',
+ down:'M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z', up:'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z',
+ shuf:'M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z',
+ rep:'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z',
+ lyr:'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
+ close:'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+ queue:'M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18a3 3 0 1 0 2 2.82V8h3V6h-5z',
+ trash:'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+ music:'M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z'
+};
+const ic=(n,c='')=>`<svg class="ic ${c}" viewBox="0 0 24 24"><path d="${P[n]}"/></svg>`;
+
+/* ================= DATA (HARDCODED FALLBACK) ================= */
+/* id = Video ID YouTube. id:null => dicari otomatis lewat q saat diputar (atau isi ID via Admin Panel) */
+const SONGS=[
+ {id:'kTJczUoc26U',t:'Stay',a:'The Kid LAROI & Justin Bieber',m:['senang','romansa']},
+ {id:null,q:'Overnight official audio',t:'Overnight',a:'—',m:['bersantai','tidur']},
+ {id:null,q:'Sialnya Hidup Harus Tetap Berjalan',t:'Sialnya Hidup Harus Tetap Berjalan',a:'—',m:['sedih']},
+ {id:null,q:'Khalid Young Dumb & Broke official',t:'Young Dumb & Broke',a:'Khalid',m:['senang']},
+ {id:null,q:'You & I official video',t:'You & I',a:'—',m:['romansa']},
+ {id:'hLQl3WQQoQ0',t:'Someone Like You',a:'Adele',m:['sedih']},
+ {id:'2Vv-BfVoq4g',t:'Perfect',a:'Ed Sheeran',m:['romansa']},
+ {id:'4NRXx6U8ABQ',t:'Blinding Lights',a:'The Weeknd',m:['senang']},
+ {id:'JGwWNGJdvx8',t:'Shape of You',a:'Ed Sheeran',m:['senang']},
+ {id:'RgKAFK5djSk',t:'See You Again',a:'Wiz Khalifa ft. Charlie Puth',m:['sedih']},
+ {id:'ApXoWvfEYVU',t:'Sunflower',a:'Post Malone & Swae Lee',m:['bersantai']},
+ {id:'H5v3kku4y6Q',t:'As It Was',a:'Harry Styles',m:['bersantai','sedih']},
+ {id:'mRD0-GxqHVo',t:'Heat Waves',a:'Glass Animals',m:['bersantai','tidur']},
+ {id:'lp-EO5I60KA',t:'Thinking Out Loud',a:'Ed Sheeran',m:['romansa','tidur']},
+ {id:'450p7goxZqg',t:'All of Me',a:'John Legend',m:['romansa']},
+ {id:'SlPhMPnQ58k',t:'Memories',a:'Maroon 5',m:['sedih']},
+ {id:'0zGcUoRlhmw',t:'Closer',a:'The Chainsmokers ft. Halsey',m:['bersantai']},
+ {id:'7wtfhZwyrcc',t:'Believer',a:'Imagine Dragons',m:['senang']},
+ {id:'TUVcZfQe-Kw',t:'Levitating',a:'Dua Lipa',m:['senang']},
+ {id:'YQHsXMglC9A',t:'Hello',a:'Adele',m:['sedih']},
+ {id:'hT_nvWreIhg',t:'Counting Stars',a:'OneRepublic',m:['senang','bersantai']},
+ {id:'8UVNT4wvIGY',t:'Somebody That I Used to Know',a:'Gotye',m:['sedih']},
+ {id:'OPf0YbXqDm0',t:'Uptown Funk',a:'Mark Ronson ft. Bruno Mars',m:['senang']},
+ {id:'rYEDA3JcQqw',t:'Rolling in the Deep',a:'Adele',m:['sedih']}
+];
+const ARTISTS=[
+ {n:'Ed Sheeran',v:'2Vv-BfVoq4g'},{n:'Adele',v:'hLQl3WQQoQ0'},{n:'The Weeknd',v:'4NRXx6U8ABQ'},
+ {n:'Dua Lipa',v:'TUVcZfQe-Kw'},{n:'Maroon 5',v:'SlPhMPnQ58k'},{n:'Imagine Dragons',v:'7wtfhZwyrcc'},{n:'Harry Styles',v:'H5v3kku4y6Q'}
+];
+const MOODS=['Bersantai','Tidur','Senang','Sedih','Romansa'];
+const ADMIN={email:'zhenml0102@gmail.com',pass:'1234@#$'};
+
+function catalog(){
+  const res=LS.g('jm_resolved',{});
+  return SONGS.concat(LS.g('jm_custom',[])).map(s=>{
+    const o={...s}; o.k=o.k||(s.id||'q_'+slug(s.t));
+    if(!o.id&&res[o.k])o.id=res[o.k];
+    return o;
+  });
+}
+const byKey=k=>catalog().find(s=>s.k===k);
+function grad(s){let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return `linear-gradient(135deg,hsl(${h},55%,34%),hsl(${(h+50)%360},60%,22%))`}
+function cover(s,round){
+  const name=s.t||s.n||'';
+  const img=s.id||s.v?`<img loading="lazy" alt="" src="https://i.ytimg.com/vi/${s.id||s.v}/hqdefault.jpg" onerror="this.remove()">`:'';
+  return `<div class="cv ${round?'round':''}" style="background:${grad(name)}"><div class="ph">${esc(name.trim().charAt(0).toUpperCase())}</div>${img}</div>`;
+}
+
+/* ================= STATE ================= */
+let ctxLists={}, queue=[], qi=-1, cur=null, shuffle=false, repeat=0, mood=null, libTab='liked', user=null;
+let ytReady=false, yt=null, pending=null, tick=null, playing=false;
+
+/* ================= PWA ================= */
+(function pwa(){
+  const svg=encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="#000"/><path d="M70 38V78a16 16 0 0 1-32 0" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round"/><path d="M20 70A44 44 0 0 1 108 70" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/><rect x="11" y="64" width="16" height="30" rx="6" fill="#fff"/><rect x="101" y="64" width="16" height="30" rx="6" fill="#fff"/></svg>');
+  const icon='data:image/svg+xml,'+svg;
+  const man={name:'JoyzMusic',short_name:'JoyzMusic',description:'Pemutar musik bergaya Metrolist & YouTube Music',start_url:'./',scope:'./',display:'standalone',orientation:'portrait',background_color:'#0d0e12',theme_color:'#0d0e12',lang:'id',icons:[{src:icon,sizes:'192x192',type:'image/svg+xml',purpose:'any'},{src:icon,sizes:'512x512',type:'image/svg+xml',purpose:'any'}]};
+  try{
+    if(!document.querySelector('link[rel=manifest]')){
+      const l=document.createElement('link');l.rel='manifest';
+      l.href=URL.createObjectURL(new Blob([JSON.stringify(man)],{type:'application/manifest+json'}));
+      document.head.appendChild(l);
+    }
+  }catch(e){}
+  if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+
+/* ================= SPLASH & BOOT ================= */
+window.addEventListener('load',()=>{
+  buildIcons();
+  setTheme(LS.g('jm_theme','ios'));
+  setTimeout(()=>{
+    $('#splash').classList.add('out');
+    setTimeout(()=>$('#splash').remove(),500);
+    user=LS.g('jm_session',null);
+    user?enterApp():showAuth();
+  },1500);
+});
+
+function buildIcons(){
+  $('#n-home').innerHTML=ic('home');$('#n-search').innerHTML=ic('search');$('#n-library').innerHTML=ic('lib');$('#n-settings').innerHTML=ic('set');
+  $('#miniFull').innerHTML=ic('up');$('#fClose').innerHTML=ic('down');$('#fQueue').innerHTML=ic('queue');
+  $('#bShuf').innerHTML=ic('shuf');$('#bPrev').innerHTML=ic('prev');$('#bNext').innerHTML=ic('next');$('#bRep').innerHTML=ic('rep');
+  $('#lyrBtn').innerHTML=ic('lyr')+' Lirik';$('#lyrClose').innerHTML=ic('close');$('#adminClose').innerHTML=ic('close');
+  setPlayIcons(false);setLikeIcons(false);
+}
+
+/* ================= AUTH ================= */
+let regMode=false;
+function showAuth(){$('#auth').classList.remove('hidden');$('#app').classList.add('hidden')}
+$('#aSwitch').onclick=()=>{
+  regMode=!regMode;
+  $('#authTitle').textContent=regMode?'Daftar':'Masuk';
+  $('#authSub').textContent=regMode?'Buat akun JoyzMusic barumu':'Selamat datang kembali di JoyzMusic';
+  $('#aGo').textContent=regMode?'Daftar':'Masuk';
+  $('#aName').style.display=regMode?'block':'none';
+  $('#aSwitch').textContent=regMode?'Sudah punya akun? Masuk':'Belum punya akun? Daftar';
+  $('#aErr').textContent='';
+};
+$('#aGo').onclick=()=>{
+  const email=$('#aEmail').value.trim().toLowerCase(), pass=$('#aPass').value, name=$('#aName').value.trim();
+  const err=m=>$('#aErr').textContent=m;
+  if(!/^\S+@\S+\.\S+$/.test(email))return err('Email tidak valid');
+  if(pass.length<4)return err('Kata sandi minimal 4 karakter');
+  const users=LS.g('jm_users',[]);
+  if(regMode){
+    if(email===ADMIN.email||users.some(u=>u.email===email))return err('Email sudah terdaftar');
+    users.push({email,name:name||email.split('@')[0],pass:btoa(unescape(encodeURIComponent(pass)))});
+    LS.s('jm_users',users);
+    user={email,name:name||email.split('@')[0],admin:false};
+  }else{
+    if(email===ADMIN.email&&pass===ADMIN.pass)user={email,name:'Admin',admin:true};
+    else{
+      const u=users.find(x=>x.email===email&&x.pass===btoa(unescape(encodeURIComponent(pass))));
+      if(!u)return err('Email atau kata sandi salah');
+      user={email,name:u.name,admin:false};
+    }
+  }
+  LS.s('jm_session',user);err('');enterApp();
+};
+$('#aGuest').onclick=()=>{user={email:'',name:'Tamu',admin:false};LS.s('jm_session',user);enterApp()};
+$('#logout').onclick=()=>{localStorage.removeItem('jm_session');user=null;stopPlayer();showAuth();toast('Berhasil keluar')};
+
+function enterApp(){
+  $('#auth').classList.add('hidden');$('#app').classList.remove('hidden');
+  const ini=(user.name||'J').charAt(0).toUpperCase();
+  $('#homeAvatar').textContent=ini;$('#setAvatar').textContent=ini;
+  $('#setName').textContent=user.name;$('#setEmail').textContent=user.email||'Mode tamu';
+  $('#adminBadge').classList.toggle('hidden',!user.admin);$('#adminCard').classList.toggle('hidden',!user.admin);
+  renderHome();renderLib();loadYT();
+}
+
+/* ================= NAVIGATION ================= */
+function go(v){
+  $$('.view').forEach(x=>x.classList.toggle('active',x.id==='v-'+v));
+  $$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.go===v));
+  if(v==='library')renderLib();
+  if(v==='search')setTimeout(()=>$('#q').focus(),50);
+}
+document.addEventListener('click',e=>{
+  const g=e.target.closest('[data-go]');if(g)return go(g.dataset.go);
+  const p=e.target.closest('[data-k]');
+  if(p&&!e.target.closest('[data-like]')){
+    const s=byKey2(p.dataset.k);if(s)startPlay(s,ctxLists[p.dataset.c]||[s]);return;
+  }
+  const lk=e.target.closest('[data-like]');if(lk){toggleLike(lk.dataset.like);renderRowsLike()}
+  const ar=e.target.closest('[data-artist]');
+  if(ar){const n=ar.dataset.artist;const l=catalog().filter(s=>s.a.includes(n));if(l.length)startPlay(l[0],l);else toast('Belum ada lagu '+n)}
+});
+
+/* ================= RENDER ================= */
+function qcard(s,c){return `<button class="qcard" data-k="${esc(s.k)}" data-c="${c}">${cover(s)}<div class="t">${esc(s.t)}</div><div class="a">${esc(s.a)}</div></button>`}
+function row(s,c){
+  const on=cur&&cur.k===s.k;
+  return `<div class="row ${on?'playing':''}" data-k="${esc(s.k)}" data-c="${c}">${cover(s)}<div class="meta"><div class="t">${on&&playing?'<span class="eq"><i></i><i></i><i></i></span>':''}${esc(s.t)}</div><div class="a">${esc(s.a)}</div></div><button class="rb ${isLiked(s.k)?'liked':''}" data-like="${esc(s.k)}">${ic(isLiked(s.k)?'heartf':'heart')}</button></div>`;
+}
+function renderHome(){
+  const all=catalog();
+  $('#chips').innerHTML=MOODS.map(m=>`<button class="chip ${mood===m.toLowerCase()?'on':''}" data-m="${m.toLowerCase()}">${m}</button>`).join('');
+  $$('#chips .chip').forEach(b=>b.onclick=()=>{mood=mood===b.dataset.m?null:b.dataset.m;renderHome()});
+  if(mood){
+    const l=all.filter(s=>(s.m||[]).includes(mood));ctxLists.mood=l;
+    $('#moodSec').innerHTML=`<div class="sec" style="margin-top:4px"><small>Suasana</small><h2>${mood.charAt(0).toUpperCase()+mood.slice(1)}</h2></div>`+(l.length?l.map(s=>row(s,'mood')).join(''):'<div class="empty">Belum ada lagu untuk mood ini</div>');
+  }else $('#moodSec').innerHTML='';
+  const q=all.slice(0,9);ctxLists.quick=q;
+  $('#quick').innerHTML=q.map(s=>qcard(s,'quick')).join('');
+  $('#artists').innerHTML=ARTISTS.map(a=>`<button class="qcard artist" data-artist="${esc(a.n)}"><div class="round">${cover({n:a.n,v:a.v},true)}</div><div class="t">${esc(a.n)}</div></button>`).join('');
+  const rec=all.slice(9);ctxLists.rec=rec;
+  $('#rec').innerHTML=rec.slice(0,12).map(s=>qcard(s,'rec')).join('');
+  const ch=all.slice().reverse();ctxLists.chart=ch;
+  $('#chart').innerHTML=ch.slice(0,8).map(s=>row(s,'chart')).join('');
+}
+function renderRowsLike(){
+  renderHome();renderLib();if($('#q').value)doSearch($('#q').value);setLikeIcons(cur&&isLiked(cur.k));
+}
+
+/* search */
+let sT;$('#q').addEventListener('input',e=>{clearTimeout(sT);sT=setTimeout(()=>doSearch(e.target.value),250)});
+function ytId(x){const m=x.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/);return m?m[1]:(/^[\w-]{11}$/.test(x.trim())?x.trim():null)}
+function doSearch(v){
+  v=v.trim();const box=$('#sres');
+  if(!v){box.innerHTML='<div class="empty">Cari lagu, artis, atau tempel link YouTube</div>';return}
+  const id=ytId(v);let html='';
+  if(id){html+=`<button class="btn ghost" id="playLink" style="margin-bottom:10px">▶ Putar dari link / ID: ${esc(id)}</button>`}
+  const l=catalog().filter(s=>(s.t+' '+s.a).toLowerCase().includes(v.toLowerCase()));ctxLists.search=l;
+  html+=l.length?l.map(s=>row(s,'search')).join(''):'<div class="empty">Tidak ada hasil di koleksi lokal</div>';
+  html+=`<button class="btn ghost" id="webSearch" style="margin-top:10px">🌐 Cari di YouTube (online)</button><div id="webRes"></div>`;
+  box.innerHTML=html;
+  const pl=$('#playLink');if(pl)pl.onclick=()=>{const s={id,k:id,t:'Video '+id,a:'YouTube',m:[]};startPlay(s,[s])};
+  $('#webSearch').onclick=()=>webSearch(v);
+}
+const PIPED=['https://pipedapi.kavin.rocks','https://pipedapi.adminforge.de','https://api.piped.private.coffee'];
+async function fetchT(u,ms=6000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{return await fetch(u,{signal:c.signal})}finally{clearTimeout(t)}}
+async function pipedSearch(q){
+  for(const h of PIPED){
+    try{const r=await fetchT(`${h}/search?q=${encodeURIComponent(q)}&filter=music_songs`);if(!r.ok)continue;
+      const j=await r.json();const it=(j.items||[]).filter(x=>x.url&&x.url.includes('v='));if(it.length)return it}catch(e){}
+  }return null;
+}
+async function webSearch(v){
+  const b=$('#webRes');b.innerHTML='<div class="empty">Mencari…</div>';
+  const it=await pipedSearch(v);
+  if(!it){b.innerHTML='<div class="empty">Pencarian online tidak tersedia saat ini. Coba tempel link YouTube atau gunakan Admin Panel.</div>';return}
+  const l=it.slice(0,15).map(x=>{const id=x.url.split('v=')[1].split('&')[0];return {id,k:id,t:x.title,a:x.uploaderName||'YouTube',m:[]}});
+  ctxLists.web=l;b.innerHTML='<div class="h2">Hasil YouTube</div>'+l.map(s=>row(s,'web')).join('');
+  // daftar sementara agar byKey menemukan lagu web
+  const tmp=LS.g('jm_web',{});l.forEach(s=>tmp[s.k]=s);LS.s('jm_web',tmp);
+}
+/* patch byKey to include web results */
+const _byKey=byKey;
+function byKey2(k){return _byKey(k)||LS.g('jm_web',{})[k]||null}
+
+/* library */
+$('#libTabs').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;libTab=b.dataset.t;$$('#libTabs .chip').forEach(x=>x.classList.toggle('on',x===b));renderLib()};
+function renderLib(){
+  const all=catalog();let l=[];
+  if(libTab==='liked'){const lk=LS.g('jm_likes',[]);l=lk.map(k=>all.find(s=>s.k===k)||LS.g('jm_web',{})[k]).filter(Boolean)}
+  else if(libTab==='hist'){l=LS.g('jm_hist',[]).map(k=>all.find(s=>s.k===k)||LS.g('jm_web',{})[k]).filter(Boolean)}
+  else l=LS.g('jm_custom',[]).map(s=>({...s,k:s.k||s.id}));
+  ctxLists.lib=l;
+  $('#libList').innerHTML=l.length?l.map(s=>row(s,'lib')).join(''):`<div class="empty">${libTab==='liked'?'Belum ada lagu yang disukai ♡':libTab==='hist'?'Riwayat putar masih kosong':'Belum ada lagu tambahan (Admin dapat menambahkan)'}</div>`;
+}
+$('#clearHist').onclick=()=>{LS.s('jm_hist',[]);renderLib();toast('Riwayat dihapus')};
+
+/* likes */
+const isLiked=k=>LS.g('jm_likes',[]).includes(k);
+function toggleLike(k){let l=LS.g('jm_likes',[]);l=l.includes(k)?l.filter(x=>x!==k):[k,...l];LS.s('jm_likes',l)}
+
+/* theme */
+function setTheme(t){
+  document.body.className='theme-'+t;LS.s('jm_theme',t);
+  $$('#themes .theme-opt').forEach(b=>b.classList.toggle('on',b.dataset.th===t));
+  const tc=document.querySelector('meta[name=theme-color]');if(tc)tc.content='#0d0e12';
+}
+$('#themes').onclick=e=>{const b=e.target.closest('.theme-opt');if(b){setTheme(b.dataset.th);toast('Tema: '+b.textContent.trim())}};
+
+/* ================= YOUTUBE PLAYER ================= */
+function loadYT(){
+  if(window.YT&&YT.Player){onYouTubeIframeAPIReady();return}
+  if(document.getElementById('yt-api'))return;
+  const s=document.createElement('script');s.id='yt-api';s.src='https://www.youtube.com/iframe_api';s.onerror=()=>toast('Gagal memuat YouTube API (cek koneksi)');document.head.appendChild(s);
+}
+window.onYouTubeIframeAPIReady=function(){
+  if(yt)return;
+  yt=new YT.Player('ytp',{height:'200',width:'200',playerVars:{playsinline:1,controls:0,disablekb:1,fs:0,rel:0,modestbranding:1},
+    events:{onReady:()=>{ytReady=true;if(pending){const p=pending;pending=null;yt.loadVideoById(p)}},
+      onStateChange:onState,onError:()=>{toast('Video tidak bisa diputar, lanjut lagu berikutnya');setTimeout(()=>next(true),700)}}});
+};
+function onState(e){
+  const S=YT.PlayerState;
+  if(e.data===S.PLAYING){playing=true;startTick()}
+  else if(e.data===S.PAUSED){playing=false}
+  else if(e.data===S.ENDED){playing=false;next(true)}
+  setPlayIcons(playing);refreshPlaying();
+  if('mediaSession' in navigator)navigator.mediaSession.playbackState=playing?'playing':'paused';
+}
+function startTick(){clearInterval(tick);tick=setInterval(()=>{
+  if(!yt||!yt.getDuration)return;const d=yt.getDuration()||0,c=yt.getCurrentTime()||0;
+  if(!d)return;const p=c/d*100;
+  $('#miniProg').style.width=p+'%';
+  if(!seeking){const sk=$('#seek');sk.value=c/d*1000;sk.style.setProperty('--p',p+'%')}
+  $('#tCur').textContent=fmt(c);$('#tDur').textContent=fmt(d);
+},500)}
+function stopPlayer(){try{yt&&yt.stopVideo()}catch{}playing=false;cur=null;$('#mini').classList.add('off');closeFull();clearInterval(tick)}
+
+async function resolveId(s){
+  if(s.id)return s.id;
+  toast('Mencari "'+s.t+'"…');
+  const it=await pipedSearch(s.q||s.t+' '+s.a);
+  if(!it)return null;
+  const id=it[0].url.split('v=')[1].split('&')[0];
+  const r=LS.g('jm_resolved',{});r[s.k]=id;LS.s('jm_resolved',r);
+  return id;
+}
+async function startPlay(s,list){
+  s=byKey2(s.k)||s;
+  queue=(list&&list.length?list:[s]).map(x=>byKey2(x.k)||x);qi=Math.max(0,queue.findIndex(x=>x.k===s.k));
+  await playCurrent();
+}
+async function playCurrent(){
+  const s=queue[qi];if(!s)return;
+  const id=await resolveId(s);
+  if(!id){toast('Video ID tidak ditemukan. Admin: isi ID lewat Admin Panel.');return}
+  s.id=id;cur=s;
+  let h=LS.g('jm_hist',[]);h=[s.k,...h.filter(x=>x!==s.k)].slice(0,50);LS.s('jm_hist',h);
+  if(s.k.startsWith('q_')===false&&!catalog().some(x=>x.k===s.k)){const w=LS.g('jm_web',{});w[s.k]=s;LS.s('jm_web',w)}
+  if(ytReady)yt.loadVideoById(id);else{pending=id;loadYT()}
+  updateUI();
+}
+function next(auto){
+  if(!queue.length)return;
+  if(auto&&repeat===2){try{yt.seekTo(0);yt.playVideo()}catch{}return}
+  if(shuffle&&queue.length>1){let n;do{n=Math.floor(Math.random()*queue.length)}while(n===qi);qi=n}
+  else{qi++;if(qi>=queue.length){if(repeat===1||!auto)qi=0;else{qi=queue.length-1;playing=false;setPlayIcons(false);return}}}
+  playCurrent();
+}
+function prev(){
+  if(yt&&yt.getCurrentTime&&yt.getCurrentTime()>4){yt.seekTo(0);return}
+  qi=qi<=0?queue.length-1:qi-1;playCurrent();
+}
+function togglePlay(){
+  if(!cur)return;
+  if(!ytReady)return;
+  const st=yt.getPlayerState();st===YT.PlayerState.PLAYING?yt.pauseVideo():yt.playVideo();
+}
+function setPlayIcons(p){
+  $('#miniPP').innerHTML=ic(p?'pause':'play');$('#bPP').innerHTML=ic(p?'pause':'play');
+}
+function setLikeIcons(l){
+  const h=ic(l?'heartf':'heart',l?'liked':'');
+  $('#miniLike').innerHTML=h;$('#fLike').innerHTML=h;
+  $('#miniLike').classList.toggle('liked',!!l);$('#fLike').classList.toggle('liked',!!l);
+}
+function refreshPlaying(){
+  $$('.row').forEach(r=>{const on=cur&&r.dataset.k===cur.k;r.classList.toggle('playing',!!on);
+    const t=r.querySelector('.t');const eq=t&&t.querySelector('.eq');
+    if(on&&playing&&!eq)t.insertAdjacentHTML('afterbegin','<span class="eq"><i></i><i></i><i></i></span>');
+    if((!on||!playing)&&eq)eq.remove()});
+}
+function updateUI(){
+  if(!cur)return;
+  $('#mini').classList.remove('off');
+  $('#miniCv').outerHTML=cover(cur).replace('class="cv','id="miniCv" class="cv');
+  $('#miniT').textContent=cur.t;$('#miniA').textContent=cur.a;
+  $('#fT').textContent=cur.t;$('#fA').textContent=cur.a;
+  $('#fCv').outerHTML=cover(cur).replace('class="cv','id="fCv" class="cv');
+  $('#fBg').style.backgroundImage=cur.id?`url(https://i.ytimg.com/vi/${cur.id}/hqdefault.jpg)`:'none';
+  setLikeIcons(isLiked(cur.k));$('#miniProg').style.width='0';$('#seek').value=0;$('#seek').style.setProperty('--p','0%');
+  $('#tCur').textContent='0:00';$('#tDur').textContent='0:00';
+  if($('#lyrics').classList.contains('open'))loadLyrics();
+  refreshPlaying();
+  if('mediaSession' in navigator){
+    navigator.mediaSession.metadata=new MediaMetadata({title:cur.t,artist:cur.a,artwork:[{src:`https://i.ytimg.com/vi/${cur.id}/hqdefault.jpg`,sizes:'480x360',type:'image/jpeg'}]});
+  }
+}
+if('mediaSession' in navigator){
+  const ms=navigator.mediaSession;
+  ms.setActionHandler('play',()=>yt&&yt.playVideo());ms.setActionHandler('pause',()=>yt&&yt.pauseVideo());
+  ms.setActionHandler('nexttrack',()=>next());ms.setActionHandler('previoustrack',prev);
+}
+
+/* controls */
+$('#miniPP').onclick=e=>{e.stopPropagation();togglePlay()};$('#bPP').onclick=togglePlay;
+$('#bNext').onclick=()=>next();$('#bPrev').onclick=prev;
+$('#miniLike').onclick=e=>{e.stopPropagation();if(cur){toggleLike(cur.k);renderRowsLike()}};
+$('#fLike').onclick=()=>{if(cur){toggleLike(cur.k);renderRowsLike()}};
+$('#bShuf').onclick=()=>{shuffle=!shuffle;$('#bShuf').classList.toggle('on',shuffle);toast('Acak '+(shuffle?'aktif':'mati'))};
+$('#bRep').onclick=()=>{repeat=(repeat+1)%3;$('#bRep').classList.toggle('on',repeat>0);toast(['Ulang mati','Ulang semua','Ulang satu lagu'][repeat])};
+$('#fQueue').onclick=()=>{closeFull();go('library')};
+let seeking=false;const sk=$('#seek');
+sk.addEventListener('input',()=>{seeking=true;sk.style.setProperty('--p',sk.value/10+'%');if(yt&&yt.getDuration)$('#tCur').textContent=fmt(sk.value/1000*yt.getDuration())});
+sk.addEventListener('change',()=>{if(yt&&yt.getDuration)yt.seekTo(sk.value/1000*yt.getDuration(),true);seeking=false});
+
+/* full player + lyrics */
+function openFull(){if(!cur)return;$('#full').classList.add('open')}
+function closeFull(){$('#full').classList.remove('open');$('#lyrics').classList.remove('open')}
+$('#miniMeta').onclick=openFull;$('#miniCv').onclick=openFull;$('#miniFull').onclick=e=>{e.stopPropagation();openFull()};
+$('#mini').addEventListener('click',e=>{if(!e.target.closest('button'))openFull()});
+$('#fClose').onclick=closeFull;
+$('#lyrBtn').onclick=()=>{$('#lyrics').classList.add('open');loadLyrics()};
+$('#lyrClose').onclick=()=>$('#lyrics').classList.remove('open');
+async function loadLyrics(){
+  if(!cur)return;const box=$('#lyrText');box.textContent='Memuat lirik…';
+  const clean=s=>s.replace(/\(.*?\)|\[.*?\]|official.*|video|audio|lyrics?/gi,'').trim();
+  const tName=clean(cur.t),aName=clean(cur.a.split(/ft\.|feat\.|&|,/i)[0]);
+  try{
+    const r=await fetchT(`https://lrclib.net/api/get?track_name=${encodeURIComponent(tName)}&artist_name=${encodeURIComponent(aName)}`,8000);
+    if(!r.ok)throw 0;const j=await r.json();
+    box.textContent=j.plainLyrics||'Lirik tidak tersedia untuk lagu ini.';
+  }catch(e){
+    try{
+      const r=await fetchT(`https://lrclib.net/api/search?q=${encodeURIComponent(tName+' '+aName)}`,8000);
+      const j=await r.json();const f=j.find(x=>x.plainLyrics);
+      box.textContent=f?f.plainLyrics:'Lirik tidak ditemukan.';
+    }catch(e2){box.textContent='Lirik tidak ditemukan atau perangkat sedang offline.'}
+  }
+}
+
+/* ================= ADMIN PANEL ================= */
+function renderAdmin(){
+  const cu=LS.g('jm_custom',[]),us=LS.g('jm_users',[]);
+  $('#stU').textContent=us.length;$('#stC').textContent=cu.length;$('#stS').textContent=catalog().length;
+  $('#adSongs').innerHTML=cu.length?cu.map((s,i)=>`<div class="mini-row"><span>${esc(s.t)} — ${esc(s.a)}</span><button data-dc="${i}">${ic('trash')}</button></div>`).join(''):'<div class="empty" style="padding:12px">Belum ada</div>';
+  $('#adUsers').innerHTML=us.length?us.map((u,i)=>`<div class="mini-row"><span>${esc(u.name)} • ${esc(u.email)}</span><button data-du="${i}">${ic('trash')}</button></div>`).join(''):'<div class="empty" style="padding:12px">Belum ada pengguna</div>';
+}
+$('#openAdmin').onclick=()=>{if(!user||!user.admin)return;renderAdmin();$('#adminModal').classList.add('open')};
+$('#adminClose').onclick=()=>$('#adminModal').classList.remove('open');
+$('#adminModal').addEventListener('click',e=>{
+  if(e.target.id==='adminModal')return $('#adminModal').classList.remove('open');
+  const dc=e.target.closest('[data-dc]'),du=e.target.closest('[data-du]');
+  if(dc){const l=LS.g('jm_custom',[]);l.splice(+dc.dataset.dc,1);LS.s('jm_custom',l);renderAdmin();renderHome()}
+  if(du){const l=LS.g('jm_users',[]);l.splice(+du.dataset.du,1);LS.s('jm_users',l);renderAdmin()}
+});
+$('#adAdd').onclick=()=>{
+  if(!user||!user.admin)return;
+  const t=$('#adT').value.trim(),a=$('#adA').value.trim(),id=ytId($('#adV').value.trim()),m=$('#adM').value;
+  if(!t||!id)return toast('Judul dan Video ID/link valid wajib diisi');
+  const l=LS.g('jm_custom',[]);l.unshift({id,k:id,t,a:a||'—',m:m?[m]:[]});LS.s('jm_custom',l);
+  ['adT','adA','adV'].forEach(i=>$('#'+i).value='');$('#adM').value='';
+  renderAdmin();renderHome();toast('Lagu ditambahkan');
+};
+
+/* tombol kembali (Android) menutup layer terbuka */
+history.replaceState({},'');
+window.addEventListener('popstate',()=>{});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeFull();$('#adminModal').classList.remove('open')}});
+</script>
+</body>
+</html>
